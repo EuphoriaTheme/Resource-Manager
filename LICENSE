@@ -1,21 +1,56 @@
-MIT License
+EUPHORIA DEVELOPMENT ADDON LICENSE (SOURCE-AVAILABLE)
 
-Copyright (c) 2025 Euphoria Development
+Resource Manager (Blueprint Addon) for Pterodactyl Panel
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright (c) 2026 Euphoria Development
+All rights reserved.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This Software is shared publicly with its source code available (often called "open source") so the
+community can help improve it. However, the terms below restrict redistribution/resale and require
+credits to remain.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPORTANT: This is a source-available license. It is not an OSI-approved open-source license.
+
+1. Definitions
+   "Software" means the contents of this repository, including source code, configuration,
+   templates, images/assets, and any accompanying documentation.
+   "You" means any individual or entity that uses, views, copies, or modifies the Software.
+
+2. Allowed Use
+   You are permitted to:
+   - View and use the Software for personal or internal use on your own Pterodactyl/Blueprint
+     installation(s).
+   - Modify the Software for personal or internal use, including customizing it to match your
+     theme and workflow.
+   - Contribute improvements back to the official upstream repository via Pull Requests.
+
+3. No Redistribution / No Resale
+   Redistribution of the Software is NOT permitted.
+   This prohibition applies to both the original Software and any modified versions, in whole
+   or in part, whether for free or for a fee.
+
+   Without limiting the above, you may NOT:
+   - Sell, resell, rent, lease, sublicense, or commercially host/distribute the Software.
+   - Publish, re-upload, mirror, or otherwise redistribute the Software or derivatives to any
+     third party (for example: marketplaces, "addon packs", paid/free download sites, or
+     other repositories).
+
+4. Attribution / Credits Must Remain
+   You must keep original credits within the addon.
+   You may not remove or alter existing attribution, including (but not limited to) author,
+   project name, and identifier/branding references that appear in files such as the addon
+   manifest (`conf.yml`), admin views, and documentation.
+
+5. Contributions
+   If you submit a Pull Request or otherwise contribute code/content intended for inclusion in
+   the upstream project, you grant Euphoria Development a perpetual, worldwide, irrevocable,
+   royalty-free license to use, modify, relicense, and distribute your contribution as part of
+   the Software under this license (or future versions of it).
+
+6. No Warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+   INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+   PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+   FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.

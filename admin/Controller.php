@@ -1,116 +1,158 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Pterodactyl\Http\Controllers\Admin\Extensions\resourcemanager;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\View\View;
-use Illuminate\Support\Facades\File;
-use Pterodactyl\Http\Controllers\Controller;
+
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Illuminate\View\Factory as ViewFactory;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
-use Pterodactyl\Contracts\Repository\SettingsRepositoryInterface;
-use Illuminate\Http\RedirectResponse;
-use Pterodactyl\BlueprintFramework\Libraries\ExtensionLibrary\Admin\BlueprintAdminLibrary as BlueprintExtensionLibrary;
-use Pterodactyl\Http\Requests\Admin\AdminFormRequest;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Exception;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\View\View;
+use Pterodactyl\BlueprintFramework\Libraries\ExtensionLibrary\Admin\BlueprintAdminLibrary as BlueprintAdminLibrary;
+use Pterodactyl\Http\Controllers\Controller;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class resourcemanagerExtensionController extends Controller
 {
+    private const UPLOADS_RELATIVE_PATH = 'extensions/resourcemanager/uploads';
+    private const MAX_UPLOAD_KB = 20480;
+
+    /**
+     * Extensions allowed for both listing and uploading.
+     *
+     * SVG is intentionally excluded by default since it can contain active content (scripts) and
+     * uploads are served from a public directory. If you need SVG, add it here and ensure only
+     * trusted admins can upload.
+     */
+    private const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'];
+
     public function __construct(
         private ViewFactory $view,
-        private BlueprintExtensionLibrary $blueprint,
-        private ConfigRepository $config,
-        private SettingsRepositoryInterface $settings,
-    ){}
+        private BlueprintAdminLibrary $blueprint,
+    ) {
+    }
 
-    //UPLOAD HANDLER ---------------------------------------------------------------------------
-    public function index(Request $request)
+    public function index(Request $request): View
     {
-        if (!$request->user() || !$request->user()->root_admin) {
-            throw new AccessDeniedHttpException();
-        }
-    
-        return $this->view->make(
-            'admin.extensions.{identifier}.index', [
-              'root' => "/admin/extensions/{identifier}",
-              'blueprint' => $this->blueprint,
-            ]
-          );
-    }
+        $this->assertRootAdmin($request);
 
-    public function uploadImage(Request $request)
-    {
-    if (!$request->user() || !$request->user()->root_admin) {
-        throw new AccessDeniedHttpException();
-    }
-
-    $request->validate([
-        'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp,svg|max:20480', // Validate image file
-    ]);
-
-    $file = $request->file('image');
-    $filename = time() . '_' . $file->getClientOriginalName();
-    $path = public_path('extensions/resourcemanager/uploads');
-
-    if (!file_exists($path)) {
-        mkdir($path, 0755, true); // Create the uploads directory if it doesn't exist
-    }
-
-    $file->move($path, $filename);
-
-    return response()->json(['success' => true, 'message' => 'Image uploaded successfully.', 'url' => "/extensions/resourcemanager/uploads/$filename"]);
-    }
-
-    public function listImages(Request $request)
-    {
-    if (!$request->user() || !$request->user()->root_admin) {
-        throw new AccessDeniedHttpException();
-    }
-
-    $path = public_path('extensions/resourcemanager/uploads');
-    $files = [];
-
-    if (file_exists($path)) {
-        $files = array_map(function ($file) {
-            return [
-                'name' => basename($file),
-                'url' => asset("extensions/resourcemanager/uploads/" . basename($file)),
-            ];
-        }, glob($path . '/*'));
-    }
-
-    return response()->json(['success' => true, 'files' => $files]);
-    }
-
-    public function deleteImage(Request $request)
-    {
-        if (!$request->user() || !$request->user()->root_admin) {
-            throw new AccessDeniedHttpException();
-        }
-    
-        $request->validate([
-            'filename' => 'required|string',
+        return $this->view->make('admin.extensions.{identifier}.index', [
+            'root' => '/admin/extensions/{identifier}',
+            'blueprint' => $this->blueprint,
         ]);
-    
-        $uploadsDir = public_path('extensions/resourcemanager/uploads');
-    
-        $filename = basename($request->input('filename'));
-    
-        $filePath = $uploadsDir . DIRECTORY_SEPARATOR . $filename;
-    
-        if (file_exists($filePath) && strpos(realpath($filePath), realpath($uploadsDir)) === 0) {
-            unlink($filePath);
-            return response()->json(['success' => true, 'message' => 'Image deleted successfully.']);
-        }
-    
-        return response()->json(['success' => false, 'message' => 'File not found or invalid.'], 404);
     }
 
+    public function showUploadsForm(Request $request): View
+    {
+        // Backwards-compatible alias for older route names/paths.
+        return $this->index($request);
+    }
+
+    public function uploadImage(Request $request): JsonResponse
+    {
+        $this->assertRootAdmin($request);
+
+        $request->validate([
+            'image' => [
+                'required',
+                'file',
+                'image',
+                'mimes:' . implode(',', self::ALLOWED_EXTENSIONS),
+                'max:' . self::MAX_UPLOAD_KB,
+            ],
+        ]);
+
+        $file = $request->file('image');
+        if (!$file) {
+            return response()->json(['success' => false, 'message' => 'No file uploaded.'], 400);
+        }
+
+        $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
+        File::ensureDirectoryExists($uploadsDir, 0755, true);
+
+        $ext = strtolower($file->extension() ?: '');
+        if ($ext === '' || !in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
+            return response()->json(['success' => false, 'message' => 'File type not allowed.'], 422);
+        }
+
+        // Use a readable slug + random suffix to avoid collisions and avoid unsafe filenames.
+        $base = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $base = Str::slug($base);
+        if ($base === '') {
+            $base = 'image';
+        }
+
+        $filename = sprintf('%s_%s.%s', $base, Str::random(8), $ext);
+        $file->move($uploadsDir, $filename);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image uploaded successfully.',
+            'file' => [
+                'name' => $filename,
+                'url' => asset(self::UPLOADS_RELATIVE_PATH . '/' . $filename),
+            ],
+        ]);
+    }
+
+    public function listImages(Request $request): JsonResponse
+    {
+        $this->assertRootAdmin($request);
+
+        $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
+        if (!File::exists($uploadsDir)) {
+            return response()->json(['success' => true, 'files' => []]);
+        }
+
+        $files = collect(File::files($uploadsDir))
+            ->filter(fn ($file) => in_array(strtolower($file->getExtension()), self::ALLOWED_EXTENSIONS, true))
+            ->sortByDesc(fn ($file) => $file->getMTime())
+            ->map(fn ($file) => [
+                'name' => $file->getFilename(),
+                'url' => asset(self::UPLOADS_RELATIVE_PATH . '/' . $file->getFilename()),
+                'size' => $file->getSize(),
+                'last_modified' => $file->getMTime(),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['success' => true, 'files' => $files]);
+    }
+
+    public function deleteImage(Request $request): JsonResponse
+    {
+        $this->assertRootAdmin($request);
+
+        $request->validate([
+            'filename' => ['required', 'string', 'max:255'],
+        ]);
+
+        $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
+        $uploadsDirReal = realpath($uploadsDir);
+        if ($uploadsDirReal === false) {
+            return response()->json(['success' => false, 'message' => 'Uploads directory not found.'], 404);
+        }
+
+        $filename = basename((string) $request->input('filename'));
+        $filePath = $uploadsDirReal . DIRECTORY_SEPARATOR . $filename;
+        $fileReal = realpath($filePath);
+
+        // Prevent path traversal / deleting outside uploads.
+        if ($fileReal === false || strpos($fileReal, $uploadsDirReal) !== 0) {
+            return response()->json(['success' => false, 'message' => 'File not found or invalid.'], 404);
+        }
+
+        File::delete($fileReal);
+
+        return response()->json(['success' => true, 'message' => 'Image deleted successfully.']);
+    }
+
+    private function assertRootAdmin(Request $request): void
+    {
+        if (!$request->user() || !$request->user()->root_admin) {
+            throw new AccessDeniedHttpException();
+        }
+    }
 }

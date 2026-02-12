@@ -212,9 +212,18 @@ class resourcemanagerExtensionController extends Controller
                 $im->stripImage();
 
                 $formatMap = [
-                    'jpg' => 'jpeg', 'jpeg' => 'jpeg', 'png' => 'png', 'gif' => 'gif',
-                    'webp' => 'webp', 'bmp' => 'bmp', 'tif' => 'tiff', 'tiff' => 'tiff',
-                    'avif' => 'avif', 'heif' => 'heic', 'heic' => 'heic', 'ico' => 'ico',
+                    'jpg' => 'jpeg',
+                    'jpeg' => 'jpeg',
+                    'png' => 'png',
+                    'gif' => 'gif',
+                    'webp' => 'webp',
+                    'bmp' => 'bmp',
+                    'tif' => 'tiff',
+                    'tiff' => 'tiff',
+                    'avif' => 'avif',
+                    'heif' => 'heic',
+                    'heic' => 'heic',
+                    'ico' => 'ico',
                 ];
 
                 $targetFormat = $formatMap[$ext] ?? strtolower($im->getImageFormat());
@@ -313,9 +322,9 @@ class resourcemanagerExtensionController extends Controller
         }
 
         $files = collect(File::files($uploadsDir))
-            ->filter(fn ($file) => in_array(strtolower($file->getExtension()), self::ALLOWED_EXTENSIONS, true))
-            ->sortByDesc(fn ($file) => $file->getMTime())
-            ->map(fn ($file) => [
+            ->filter(fn($file) => in_array(strtolower($file->getExtension()), self::ALLOWED_EXTENSIONS, true))
+            ->sortByDesc(fn($file) => $file->getMTime())
+            ->map(fn($file) => [
                 'name' => $file->getFilename(),
                 'url' => asset(self::UPLOADS_RELATIVE_PATH . '/' . $file->getFilename()),
                 'size' => $file->getSize(),

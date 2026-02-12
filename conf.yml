@@ -1,37 +1,37 @@
 info:
-  name: "Resource Manager"
-  identifier: "resourcemanager"
-  description: "A resource manager for managing resources in Pterodactyl Panel."
-  flags: ""
-  version: "1.3"
-  target: "beta-2026-01"
-  author: "Euphoria Development"
-  icon: "logo.png"
-  website: "https://euphoriadevelopment.uk"
+  name: 'Resource Manager'
+  identifier: 'resourcemanager'
+  description: 'A resource manager for managing resources in Pterodactyl Panel.'
+  flags: ''
+  version: '1.3'
+  target: 'beta-2026-01'
+  author: 'Euphoria Development'
+  icon: 'logo.png'
+  website: 'https://euphoriadevelopment.uk'
 
 admin:
-  view: "admin/view.blade.php"
-  controller: "admin/Controller.php"
-  css: ""
-  wrapper: ""
+  view: 'admin/view.blade.php'
+  controller: 'admin/Controller.php'
+  css: ''
+  wrapper: ''
 
 dashboard:
-  css: ""
-  wrapper: ""
-  components: ""
+  css: ''
+  wrapper: ''
+  components: ''
 
 data:
-  directory: ""
-  public: "public"
-  console: ""
+  directory: ''
+  public: 'public'
+  console: ''
 
 requests:
-  views: ""
-  controllers: ""
+  views: ''
+  controllers: ''
   routers:
-    application: ""
-    client: ""
-    web: "routes/web.php"
+    application: ''
+    client: ''
+    web: 'routes/web.php'
 
 database:
-  migrations: ""
+  migrations: ''

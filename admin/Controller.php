@@ -22,11 +22,12 @@ class resourcemanagerExtensionController extends Controller
     /**
      * Extensions allowed for both listing and uploading.
      *
-     * SVG is intentionally excluded by default since it can contain active content (scripts) and
-     * uploads are served from a public directory. If you need SVG, add it here and ensure only
-     * trusted admins can upload.
+     * WARNING: Some formats such as SVG, TIFF, HEIF/HEIC and ICO can contain active or less-supported
+     * content (scripts in SVG) or may not be handled consistently by all servers/browsers.
+     * If you enable these, ensure server-side checks and sanitization (especially for SVG) and
+     * restrict uploads to trusted admins.
      */
-    private const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'];
+    private const ALLOWED_EXTENSIONS = ['svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'ico', 'tif', 'tiff', 'heif', 'heic'];
 
     public function __construct(
         private ViewFactory $view,

@@ -37,6 +37,12 @@ class resourcemanagerExtensionController extends Controller
      */
     private const IMAGICK_ONLY_EXTENSIONS = ['avif', 'ico', 'tif', 'tiff', 'heif', 'heic'];
 
+    /**
+     * Cached list of allowed extensions for the current request.
+     * Avoids repeated expensive Imagick queryFormats() calls.
+     */
+    private ?array $cachedAllowedExtensions = null;
+
     public function __construct(
         private ViewFactory $view,
         private BlueprintAdminLibrary $blueprint,
@@ -44,12 +50,30 @@ class resourcemanagerExtensionController extends Controller
     }
 
     /**
+     * Get all possible extensions (for listing existing files).
+     * Returns all base and advanced formats regardless of current Imagick availability,
+     * so previously-uploaded files remain visible even if Imagick is removed/disabled.
+     *
+     * @return array<string>
+     */
+    private function getAllExtensionsForListing(): array
+    {
+        return array_merge(self::BASE_EXTENSIONS, self::IMAGICK_ONLY_EXTENSIONS);
+    }
+
+    /**
      * Get the list of allowed extensions based on available image processing capabilities.
+     * Used for upload validation and sanitization - only allows formats the server can process.
      *
      * @return array<string>
      */
     private function getAllowedExtensions(): array
     {
+        // Return cached result if already computed in this request
+        if ($this->cachedAllowedExtensions !== null) {
+            return $this->cachedAllowedExtensions;
+        }
+
         $allowed = self::BASE_EXTENSIONS;
 
         // Only allow advanced formats if Imagick is available and has the necessary codec support
@@ -75,6 +99,9 @@ class resourcemanagerExtensionController extends Controller
                 // If Imagick check fails, only use base extensions
             }
         }
+
+        // Cache the result for this request
+        $this->cachedAllowedExtensions = $allowed;
 
         return $allowed;
     }
@@ -367,7 +394,9 @@ class resourcemanagerExtensionController extends Controller
     {
         $this->assertRootAdmin($request);
 
-        $allowedExtensions = $this->getAllowedExtensions();
+        // Use static allowlist for listing so previously-uploaded files remain visible
+        // even if Imagick is removed/disabled after upload
+        $allowedExtensions = $this->getAllExtensionsForListing();
 
         $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
         if (!File::exists($uploadsDir)) {

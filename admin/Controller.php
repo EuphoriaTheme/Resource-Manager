@@ -221,7 +221,7 @@ class resourcemanagerExtensionController extends Controller
                     'tif' => 'tiff',
                     'tiff' => 'tiff',
                     'avif' => 'avif',
-                    'heif' => 'heic',
+                    'heif' => 'heif',
                     'heic' => 'heic',
                     'ico' => 'ico',
                 ];

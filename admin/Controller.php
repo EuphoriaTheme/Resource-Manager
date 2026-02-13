@@ -291,10 +291,11 @@ class resourcemanagerExtensionController extends Controller
                 break;
             case 'bmp':
                 if (!function_exists('imagebmp')) {
-                    imagepng($img, null, 6);
-                } else {
-                    imagebmp($img);
+                    imagedestroy($img);
+                    ob_end_clean();
+                    throw new \RuntimeException('BMP not supported by GD on this system.');
                 }
+                imagebmp($img);
                 break;
             default:
                 imagedestroy($img);

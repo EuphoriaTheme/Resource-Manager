@@ -124,84 +124,88 @@ class resourcemanagerExtensionController extends Controller
                 throw new \RuntimeException('Unable to read SVG.');
             }
 
-            libxml_use_internal_errors(true);
+            $previousLibxmlUseInternalErrors = libxml_use_internal_errors(true);
             $dom = new \DOMDocument();
 
-            // Disable network access when parsing.
-            if (!@$dom->loadXML($contents, LIBXML_NONET)) {
-                libxml_clear_errors();
-                throw new \RuntimeException('Invalid SVG provided.');
-            }
-
-            // Remove dangerous elements entirely.
-            $dangerTags = ['script', 'foreignObject', 'iframe', 'object', 'embed', 'link', 'meta', 'base'];
-            foreach ($dangerTags as $tag) {
-                $rem = [];
-                foreach ($dom->getElementsByTagName($tag) as $n) {
-                    $rem[] = $n;
+            try {
+                // Disable network access when parsing.
+                if (!@$dom->loadXML($contents, LIBXML_NONET)) {
+                    throw new \RuntimeException('Invalid SVG provided.');
                 }
-                foreach ($rem as $n) {
-                    if ($n->parentNode) {
-                        $n->parentNode->removeChild($n);
+
+                // Remove dangerous elements entirely.
+                $dangerTags = ['script', 'foreignObject', 'iframe', 'object', 'embed', 'link', 'meta', 'base'];
+                foreach ($dangerTags as $tag) {
+                    $rem = [];
+                    foreach ($dom->getElementsByTagName($tag) as $n) {
+                        $rem[] = $n;
                     }
-                }
-            }
-
-            // Sanitize attributes on all elements.
-            $all = [];
-            foreach ($dom->getElementsByTagName('*') as $node) {
-                $all[] = $node;
-            }
-
-            foreach ($all as $node) {
-                if (!$node->hasAttributes()) {
-                    continue;
-                }
-
-                $attrs = [];
-                foreach ($node->attributes as $a) {
-                    $attrs[] = $a->name;
-                }
-
-                foreach ($attrs as $name) {
-                    $lname = strtolower($name);
-                    $value = $node->getAttribute($name);
-
-                    if (preg_match('/^on/i', $name)) {
-                        $node->removeAttribute($name);
-                        continue;
-                    }
-
-                    if (in_array($lname, ['href', 'xlink:href', 'src'], true) && preg_match('/^\s*javascript:/i', $value)) {
-                        $node->removeAttribute($name);
-                        continue;
-                    }
-
-                    if ($lname === 'style' && $value !== '') {
-                        $clean = preg_replace([
-                            '/url\s*\(\s*[^)]+?\)/i',
-                            '/javascript\s*:/i',
-                            '/expression\s*\(/i',
-                            '/behavior\s*\(/i',
-                        ], '', $value);
-
-                        $clean = trim($clean);
-                        if ($clean === '') {
-                            $node->removeAttribute($name);
-                        } else {
-                            $node->setAttribute($name, $clean);
+                    foreach ($rem as $n) {
+                        if ($n->parentNode) {
+                            $n->parentNode->removeChild($n);
                         }
-                        continue;
                     }
                 }
-            }
 
-            $root = $dom->documentElement;
-            if ($root === null) {
-                throw new \RuntimeException('Sanitized SVG has no root element.');
-            }
+                // Sanitize attributes on all elements.
+                $all = [];
+                foreach ($dom->getElementsByTagName('*') as $node) {
+                    $all[] = $node;
+                }
 
-            return $dom->saveXML($root);
+                foreach ($all as $node) {
+                    if (!$node->hasAttributes()) {
+                        continue;
+                    }
+
+                    $attrs = [];
+                    foreach ($node->attributes as $a) {
+                        $attrs[] = $a->name;
+                    }
+
+                    foreach ($attrs as $name) {
+                        $lname = strtolower($name);
+                        $value = $node->getAttribute($name);
+
+                        if (preg_match('/^on/i', $name)) {
+                            $node->removeAttribute($name);
+                            continue;
+                        }
+
+                        if (in_array($lname, ['href', 'xlink:href', 'src'], true) && preg_match('/^\s*javascript:/i', $value)) {
+                            $node->removeAttribute($name);
+                            continue;
+                        }
+
+                        if ($lname === 'style' && $value !== '') {
+                            $clean = preg_replace([
+                                '/url\s*\(\s*[^)]+?\)/i',
+                                '/javascript\s*:/i',
+                                '/expression\s*\(/i',
+                                '/behavior\s*\(/i',
+                            ], '', $value);
+
+                            $clean = trim($clean);
+                            if ($clean === '') {
+                                $node->removeAttribute($name);
+                            } else {
+                                $node->setAttribute($name, $clean);
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                $root = $dom->documentElement;
+                if ($root === null) {
+                    throw new \RuntimeException('Sanitized SVG has no root element.');
+                }
+
+                return $dom->saveXML($root);
+            } finally {
+                libxml_clear_errors();
+                libxml_use_internal_errors($previousLibxmlUseInternalErrors);
+            }
         }
 
         // Try Imagick first for robust re-encoding and metadata stripping.

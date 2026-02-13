@@ -22,6 +22,9 @@ class resourcemanagerExtensionController extends Controller
     /**
      * Base extensions that work with GD (the fallback image processor).
      * These formats can be re-encoded without requiring Imagick.
+     *
+     * WARNING: SVG can contain active content (scripts). Server-side sanitization is applied,
+     * but only upload trusted SVG files from trusted admins.
      */
     private const BASE_EXTENSIONS = ['svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 
@@ -29,10 +32,8 @@ class resourcemanagerExtensionController extends Controller
      * Advanced extensions that require Imagick with codec support.
      * These formats cannot be re-encoded by GD and will fail if Imagick is unavailable.
      *
-     * WARNING: Some formats such as SVG, TIFF, HEIF/HEIC and ICO can contain active or less-supported
-     * content (scripts in SVG) or may not be handled consistently by all servers/browsers.
-     * If you enable these, ensure server-side checks and sanitization (especially for SVG) and
-     * restrict uploads to trusted admins.
+     * WARNING: TIFF, HEIF/HEIC and ICO are less-supported formats that may not be handled
+     * consistently by all browsers. Restrict uploads to trusted admins.
      */
     private const IMAGICK_ONLY_EXTENSIONS = ['avif', 'ico', 'tif', 'tiff', 'heif', 'heic'];
 
@@ -60,16 +61,13 @@ class resourcemanagerExtensionController extends Controller
 
                 // Add advanced extensions if Imagick supports them
                 foreach (self::IMAGICK_ONLY_EXTENSIONS as $ext) {
-                    $formatMap = [
-                        'avif' => 'AVIF',
-                        'ico' => 'ICO',
-                        'tif' => 'TIFF',
-                        'tiff' => 'TIFF',
-                        'heif' => 'HEIF',
-                        'heic' => 'HEIC',
-                    ];
-                    $requiredFormat = strtolower($formatMap[$ext] ?? strtoupper($ext));
-                    if (in_array($requiredFormat, $formats, true)) {
+                    // Map file extensions to Imagick format names
+                    $formatName = match($ext) {
+                        'tif' => 'tiff',
+                        default => $ext,
+                    };
+                    
+                    if (in_array(strtolower($formatName), $formats, true)) {
                         $allowed[] = $ext;
                     }
                 }

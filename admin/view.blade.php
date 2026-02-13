@@ -29,7 +29,7 @@
                         <div class="form-group" style="margin-right: 10px;">
                             <label class="sr-only" for="rm-image">Select Image</label>
                             <input type="file" id="rm-image" name="image" class="form-control"
-                                accept="image/svg+xml,image/bmp,image/x-icon,image/vnd.microsoft.icon,image/tiff,,image/heic,image/heif,image/png,image/jpeg,image/webp,image/gif,image/avif"
+                                accept="image/svg+xml,image/bmp,image/x-icon,image/vnd.microsoft.icon,image/tiff,image/heic,image/heif,image/png,image/jpeg,image/webp,image/gif,image/avif"
                                 required>
                         </div>
                         <button id="rm-upload-btn" type="submit" class="btn btn-primary">Upload</button>

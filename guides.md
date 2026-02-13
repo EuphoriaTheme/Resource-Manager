@@ -1,7 +1,9 @@
 # Guide
+
 To get started ensure you have Pterodactyl Installed & Blueprint Framework!
 
 ## Installation Steps
+
 - Download the zip from GitHub/BuiltByIt/SourceExchange.
 - Extract the Zip Files.
 - Transfer the *.blueprint file to your VM or Server.

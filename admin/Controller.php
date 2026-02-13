@@ -20,19 +20,65 @@ class resourcemanagerExtensionController extends Controller
     private const MAX_UPLOAD_KB = 20480;
 
     /**
-     * Extensions allowed for both listing and uploading.
+     * Base extensions that work with GD (the fallback image processor).
+     * These formats can be re-encoded without requiring Imagick.
+     */
+    private const BASE_EXTENSIONS = ['svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+    /**
+     * Advanced extensions that require Imagick with codec support.
+     * These formats cannot be re-encoded by GD and will fail if Imagick is unavailable.
      *
      * WARNING: Some formats such as SVG, TIFF, HEIF/HEIC and ICO can contain active or less-supported
      * content (scripts in SVG) or may not be handled consistently by all servers/browsers.
      * If you enable these, ensure server-side checks and sanitization (especially for SVG) and
      * restrict uploads to trusted admins.
      */
-    private const ALLOWED_EXTENSIONS = ['svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'ico', 'tif', 'tiff', 'heif', 'heic'];
+    private const IMAGICK_ONLY_EXTENSIONS = ['avif', 'ico', 'tif', 'tiff', 'heif', 'heic'];
 
     public function __construct(
         private ViewFactory $view,
         private BlueprintAdminLibrary $blueprint,
     ) {
+    }
+
+    /**
+     * Get the list of allowed extensions based on available image processing capabilities.
+     *
+     * @return array<string>
+     */
+    private function getAllowedExtensions(): array
+    {
+        $allowed = self::BASE_EXTENSIONS;
+
+        // Only allow advanced formats if Imagick is available and has the necessary codec support
+        if (class_exists(\Imagick::class)) {
+            try {
+                $im = new \Imagick();
+                $formats = array_map('strtolower', $im->queryFormats());
+                $im->destroy();
+
+                // Add advanced extensions if Imagick supports them
+                foreach (self::IMAGICK_ONLY_EXTENSIONS as $ext) {
+                    $formatMap = [
+                        'avif' => 'AVIF',
+                        'ico' => 'ICO',
+                        'tif' => 'TIFF',
+                        'tiff' => 'TIFF',
+                        'heif' => 'HEIF',
+                        'heic' => 'HEIC',
+                    ];
+                    $requiredFormat = strtolower($formatMap[$ext] ?? strtoupper($ext));
+                    if (in_array($requiredFormat, $formats, true)) {
+                        $allowed[] = $ext;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // If Imagick check fails, only use base extensions
+            }
+        }
+
+        return $allowed;
     }
 
     public function index(Request $request): View
@@ -55,12 +101,14 @@ class resourcemanagerExtensionController extends Controller
     {
         $this->assertRootAdmin($request);
 
+        $allowedExtensions = $this->getAllowedExtensions();
+
         $request->validate([
             'image' => [
                 'required',
                 'file',
                 'image',
-                'mimes:' . implode(',', self::ALLOWED_EXTENSIONS),
+                'mimes:' . implode(',', $allowedExtensions),
                 'max:' . self::MAX_UPLOAD_KB,
             ],
         ]);
@@ -74,8 +122,8 @@ class resourcemanagerExtensionController extends Controller
         File::ensureDirectoryExists($uploadsDir, 0755, true);
 
         $ext = strtolower($file->extension() ?: '');
-        if ($ext === '' || !in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
-            return response()->json(['success' => false, 'message' => 'File type not allowed.'], 422);
+        if ($ext === '' || !in_array($ext, $allowedExtensions, true)) {
+            return response()->json(['success' => false, 'message' => 'File type not allowed. Your server only supports: ' . implode(', ', $allowedExtensions)], 422);
         }
 
         // Use a readable slug + random suffix to avoid collisions and avoid unsafe filenames.
@@ -321,13 +369,15 @@ class resourcemanagerExtensionController extends Controller
     {
         $this->assertRootAdmin($request);
 
+        $allowedExtensions = $this->getAllowedExtensions();
+
         $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
         if (!File::exists($uploadsDir)) {
             return response()->json(['success' => true, 'files' => []]);
         }
 
         $files = collect(File::files($uploadsDir))
-            ->filter(fn($file) => in_array(strtolower($file->getExtension()), self::ALLOWED_EXTENSIONS, true))
+            ->filter(fn($file) => in_array(strtolower($file->getExtension()), $allowedExtensions, true))
             ->sortByDesc(fn($file) => $file->getMTime())
             ->map(fn($file) => [
                 'name' => $file->getFilename(),

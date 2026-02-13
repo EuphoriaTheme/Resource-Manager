@@ -34,7 +34,7 @@
                         </div>
                         <button id="rm-upload-btn" type="submit" class="btn btn-primary">Upload</button>
                         <span id="rm-upload-hint" class="text-muted" style="margin-left: 10px;">Max 20MB. Supported:
-                            SVG, JPG, PNG, WebP, GIF, AVIF, BMP, ICO, TIFF, HEIF/HEIC.</span>
+                            SVG, JPG, PNG, WebP, GIF, BMP. Advanced formats (AVIF, ICO, TIFF, HEIF/HEIC) require Imagick.</span>
                     </form>
 
                     <hr>

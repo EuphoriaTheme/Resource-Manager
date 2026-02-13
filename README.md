@@ -19,6 +19,20 @@ Admin-only upload manager for images/assets you want to reuse across Blueprint a
 - Blueprint Framework on Pterodactyl Panel
 - Target: `beta-2026-01` (see `conf.yml`)
 
+### Image Format Support
+
+**Base formats** (always supported): SVG, JPG, JPEG, PNG, GIF, WebP, BMP
+
+**Advanced formats** (require Imagick): AVIF, ICO, TIFF, HEIF/HEIC
+
+To enable advanced format support on Pterodactyl servers (PHP 8.3):
+```bash
+apt install -y php8.3-imagick
+systemctl restart php8.3-fpm
+```
+
+Without Imagick, attempts to upload advanced formats will be rejected with a clear error message listing your server's supported formats.
+
 ## Installation / Development Guides
 
 Follow the official Blueprint guides for installing addons and developing extensions:

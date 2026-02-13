@@ -12,7 +12,7 @@ Admin-only upload manager for images/assets you want to reuse across Blueprint a
 
 - Uploaded files are stored in a public directory and can be accessed by URL.
 - Only root admins can upload/delete via the UI, but you should still only upload trusted files.
-- SVG is intentionally not accepted by default (it can contain scripts). See `admin/Controller.php` if you want to enable it.
+- SVG uploads are allowed and run through a server-side sanitizer, but SVGs can still carry more risk than raster images. Only upload trusted SVGs, and review `admin/Controller.php` if you want to further restrict or disable SVG support.
 
 ## Compatibility
 

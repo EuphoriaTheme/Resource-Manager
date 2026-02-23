@@ -20,18 +20,90 @@ class resourcemanagerExtensionController extends Controller
     private const MAX_UPLOAD_KB = 20480;
 
     /**
-     * Extensions allowed for both listing and uploading.
+     * Base extensions that work with GD (the fallback image processor).
+     * These formats can be re-encoded without requiring Imagick.
      *
-     * SVG is intentionally excluded by default since it can contain active content (scripts) and
-     * uploads are served from a public directory. If you need SVG, add it here and ensure only
-     * trusted admins can upload.
+     * WARNING: SVG can contain active content (scripts). Server-side sanitization is applied,
+     * but only upload trusted SVG files from trusted admins.
      */
-    private const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'];
+    private const BASE_EXTENSIONS = ['svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+    /**
+     * Advanced extensions that require Imagick with codec support.
+     * These formats cannot be re-encoded by GD and will fail if Imagick is unavailable.
+     *
+     * WARNING: TIFF, HEIF/HEIC and ICO are less-supported formats that may not be handled
+     * consistently by all browsers. Restrict uploads to trusted admins.
+     */
+    private const IMAGICK_ONLY_EXTENSIONS = ['avif', 'ico', 'tif', 'tiff', 'heif', 'heic'];
+
+    /**
+     * Cached list of allowed extensions for the current request.
+     * Avoids repeated expensive Imagick queryFormats() calls.
+     */
+    private ?array $cachedAllowedExtensions = null;
 
     public function __construct(
         private ViewFactory $view,
         private BlueprintAdminLibrary $blueprint,
     ) {
+    }
+
+    /**
+     * Get all possible extensions (for listing existing files).
+     * Returns all base and advanced formats regardless of current Imagick availability,
+     * so previously-uploaded files remain visible even if Imagick is removed/disabled.
+     *
+     * @return array<string>
+     */
+    private function getAllExtensionsForListing(): array
+    {
+        return array_merge(self::BASE_EXTENSIONS, self::IMAGICK_ONLY_EXTENSIONS);
+    }
+
+    /**
+     * Get the list of allowed extensions based on available image processing capabilities.
+     * Used for upload validation and sanitization - only allows formats the server can process.
+     *
+     * @return array<string>
+     */
+    private function getAllowedExtensions(): array
+    {
+        // Return cached result if already computed in this request
+        if ($this->cachedAllowedExtensions !== null) {
+            return $this->cachedAllowedExtensions;
+        }
+
+        $allowed = self::BASE_EXTENSIONS;
+
+        // Only allow advanced formats if Imagick is available and has the necessary codec support
+        if (class_exists(\Imagick::class)) {
+            try {
+                $im = new \Imagick();
+                $formats = array_map('strtolower', $im->queryFormats());
+                $im->destroy();
+
+                // Add advanced extensions if Imagick supports them
+                foreach (self::IMAGICK_ONLY_EXTENSIONS as $ext) {
+                    // Map file extensions to Imagick format names
+                    $formatName = match($ext) {
+                        'tif' => 'tiff',
+                        default => $ext,
+                    };
+                    
+                    if (in_array(strtolower($formatName), $formats, true)) {
+                        $allowed[] = $ext;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // If Imagick check fails, only use base extensions
+            }
+        }
+
+        // Cache the result for this request
+        $this->cachedAllowedExtensions = $allowed;
+
+        return $allowed;
     }
 
     public function index(Request $request): View
@@ -54,12 +126,14 @@ class resourcemanagerExtensionController extends Controller
     {
         $this->assertRootAdmin($request);
 
+        $allowedExtensions = $this->getAllowedExtensions();
+
         $request->validate([
             'image' => [
                 'required',
                 'file',
                 'image',
-                'mimes:' . implode(',', self::ALLOWED_EXTENSIONS),
+                'mimes:' . implode(',', $allowedExtensions),
                 'max:' . self::MAX_UPLOAD_KB,
             ],
         ]);
@@ -73,8 +147,8 @@ class resourcemanagerExtensionController extends Controller
         File::ensureDirectoryExists($uploadsDir, 0755, true);
 
         $ext = strtolower($file->extension() ?: '');
-        if ($ext === '' || !in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
-            return response()->json(['success' => false, 'message' => 'File type not allowed.'], 422);
+        if ($ext === '' || !in_array($ext, $allowedExtensions, true)) {
+            return response()->json(['success' => false, 'message' => 'File type not allowed. Your server only supports: ' . implode(', ', $allowedExtensions)], 422);
         }
 
         // Use a readable slug + random suffix to avoid collisions and avoid unsafe filenames.
@@ -85,7 +159,16 @@ class resourcemanagerExtensionController extends Controller
         }
 
         $filename = sprintf('%s_%s.%s', $base, Str::random(8), $ext);
-        $file->move($uploadsDir, $filename);
+
+        // Sanitize uploads for all supported formats before writing.
+        try {
+            $sanitized = $this->sanitizeUploadedFile($file, $ext);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'File sanitization failed.'], 422);
+        }
+
+        $targetPath = $uploadsDir . DIRECTORY_SEPARATOR . $filename;
+        File::put($targetPath, $sanitized);
 
         return response()->json([
             'success' => true,
@@ -97,9 +180,223 @@ class resourcemanagerExtensionController extends Controller
         ]);
     }
 
+    /**
+     * Sanitize an uploaded file's contents for supported image formats.
+     *
+     * Returns the sanitized binary blob to be written to disk.
+     *
+     * @throws \RuntimeException
+     */
+    private function sanitizeUploadedFile(\Illuminate\Http\UploadedFile $file, string $ext): string
+    {
+        $ext = strtolower($ext);
+
+        if ($ext === 'svg') {
+            $contents = @file_get_contents($file->getPathname());
+            if ($contents === false) {
+                throw new \RuntimeException('Unable to read SVG.');
+            }
+
+            $previousLibxmlUseInternalErrors = libxml_use_internal_errors(true);
+            $dom = new \DOMDocument();
+
+            try {
+                // Disable network access when parsing.
+                if (!@$dom->loadXML($contents, LIBXML_NONET)) {
+                    throw new \RuntimeException('Invalid SVG provided.');
+                }
+
+                // Remove dangerous elements entirely.
+                $dangerTags = ['script', 'foreignObject', 'iframe', 'object', 'embed', 'link', 'meta', 'base'];
+                foreach ($dangerTags as $tag) {
+                    $rem = [];
+                    foreach ($dom->getElementsByTagName($tag) as $n) {
+                        $rem[] = $n;
+                    }
+                    foreach ($rem as $n) {
+                        if ($n->parentNode) {
+                            $n->parentNode->removeChild($n);
+                        }
+                    }
+                }
+
+                // Sanitize attributes on all elements.
+                $all = [];
+                foreach ($dom->getElementsByTagName('*') as $node) {
+                    $all[] = $node;
+                }
+
+                foreach ($all as $node) {
+                    if (!$node->hasAttributes()) {
+                        continue;
+                    }
+
+                    $attrs = [];
+                    foreach ($node->attributes as $a) {
+                        $attrs[] = $a->name;
+                    }
+
+                    foreach ($attrs as $name) {
+                        $lname = strtolower($name);
+                        $value = $node->getAttribute($name);
+
+                        if (preg_match('/^on/i', $name)) {
+                            $node->removeAttribute($name);
+                            continue;
+                        }
+
+                        if (in_array($lname, ['href', 'xlink:href', 'src'], true) && preg_match('/^\s*javascript:/i', $value)) {
+                            $node->removeAttribute($name);
+                            continue;
+                        }
+
+                        if ($lname === 'style' && $value !== '') {
+                            $clean = preg_replace([
+                                '/url\s*\(\s*[^)]+?\)/i',
+                                '/javascript\s*:/i',
+                                '/expression\s*\(/i',
+                                '/behavior\s*\(/i',
+                            ], '', $value);
+
+                            $clean = trim($clean);
+                            if ($clean === '') {
+                                $node->removeAttribute($name);
+                            } else {
+                                $node->setAttribute($name, $clean);
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                $root = $dom->documentElement;
+                if ($root === null) {
+                    throw new \RuntimeException('Sanitized SVG has no root element.');
+                }
+
+                return $dom->saveXML($root);
+            } finally {
+                libxml_clear_errors();
+                libxml_use_internal_errors($previousLibxmlUseInternalErrors);
+            }
+        }
+
+        // Try Imagick first for robust re-encoding and metadata stripping.
+        if (class_exists(\Imagick::class)) {
+            try {
+                $im = new \Imagick();
+                $im->readImage($file->getPathname());
+                $im->stripImage();
+
+                $formatMap = [
+                    'jpg' => 'jpeg',
+                    'jpeg' => 'jpeg',
+                    'png' => 'png',
+                    'gif' => 'gif',
+                    'webp' => 'webp',
+                    'bmp' => 'bmp',
+                    'tif' => 'tiff',
+                    'tiff' => 'tiff',
+                    'avif' => 'avif',
+                    'heif' => 'heif',
+                    'heic' => 'heic',
+                    'ico' => 'ico',
+                ];
+
+                $targetFormat = $formatMap[$ext] ?? strtolower($im->getImageFormat());
+                $im->setImageFormat($targetFormat);
+                $blob = $im->getImagesBlob();
+                $im->clear();
+                $im->destroy();
+
+                if (!$blob) {
+                    throw new \RuntimeException('Imagick produced empty output.');
+                }
+
+                return $blob;
+            } catch (\Throwable $e) {
+                // continue to GD fallback
+            }
+        }
+
+        // GD fallback: re-encode which will drop metadata. Preserve alpha for PNG/GIF where possible.
+        $data = @file_get_contents($file->getPathname());
+        if ($data === false) {
+            throw new \RuntimeException('Unable to read uploaded file.');
+        }
+
+        $img = @imagecreatefromstring($data);
+        if ($img === false) {
+            throw new \RuntimeException('Unsupported image format or corrupt file.');
+        }
+
+        ob_start();
+
+        // Preserve PNG/GIF alpha where applicable.
+        if (in_array($ext, ['png', 'gif', 'webp'], true)) {
+            $w = imagesx($img);
+            $h = imagesy($img);
+            $canvas = imagecreatetruecolor($w, $h);
+            imagealphablending($canvas, false);
+            imagesavealpha($canvas, true);
+            $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+            imagefilledrectangle($canvas, 0, 0, $w, $h, $transparent);
+            imagecopy($canvas, $img, 0, 0, 0, 0, $w, $h);
+            imagedestroy($img);
+            $img = $canvas;
+        }
+
+        switch ($ext) {
+            case 'jpg':
+            case 'jpeg':
+                imagejpeg($img, null, 90);
+                break;
+            case 'png':
+                imagesavealpha($img, true);
+                imagepng($img, null, 6);
+                break;
+            case 'gif':
+                imagegif($img);
+                break;
+            case 'webp':
+                if (!function_exists('imagewebp')) {
+                    imagedestroy($img);
+                    ob_end_clean();
+                    throw new \RuntimeException('WebP not supported by GD on this system.');
+                }
+                imagewebp($img, null, 80);
+                break;
+            case 'bmp':
+                if (!function_exists('imagebmp')) {
+                    imagedestroy($img);
+                    ob_end_clean();
+                    throw new \RuntimeException('BMP not supported by GD on this system.');
+                }
+                imagebmp($img);
+                break;
+            default:
+                imagedestroy($img);
+                ob_end_clean();
+                throw new \RuntimeException('Unsupported image format for sanitization.');
+        }
+
+        $out = ob_get_clean();
+        imagedestroy($img);
+
+        if ($out === false || $out === '') {
+            throw new \RuntimeException('Failed to re-encode image with GD.');
+        }
+
+        return $out;
+    }
+
     public function listImages(Request $request): JsonResponse
     {
         $this->assertRootAdmin($request);
+
+        // Use static allowlist for listing so previously-uploaded files remain visible
+        // even if Imagick is removed/disabled after upload
+        $allowedExtensions = $this->getAllExtensionsForListing();
 
         $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
         if (!File::exists($uploadsDir)) {
@@ -107,9 +404,9 @@ class resourcemanagerExtensionController extends Controller
         }
 
         $files = collect(File::files($uploadsDir))
-            ->filter(fn ($file) => in_array(strtolower($file->getExtension()), self::ALLOWED_EXTENSIONS, true))
-            ->sortByDesc(fn ($file) => $file->getMTime())
-            ->map(fn ($file) => [
+            ->filter(fn($file) => in_array(strtolower($file->getExtension()), $allowedExtensions, true))
+            ->sortByDesc(fn($file) => $file->getMTime())
+            ->map(fn($file) => [
                 'name' => $file->getFilename(),
                 'url' => asset(self::UPLOADS_RELATIVE_PATH . '/' . $file->getFilename()),
                 'size' => $file->getSize(),

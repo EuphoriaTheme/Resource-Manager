@@ -5,7 +5,7 @@ Admin-only upload manager for images/assets you want to reuse across Blueprint a
 ## What This Addon Does
 
 - Adds an admin extension page for uploading, listing, copying links, and deleting images.
-- Stores files under `/extensions/resourcemanager/uploads/` so other addons can reference them by URL.
+- Stores files under `/fs/resourcemanager/uploads/` so other addons can reference them by URL.
 - Ships with a starter set of images in `public/uploads/` (optional convenience assets).
 
 ## Security Notes
@@ -26,6 +26,7 @@ Admin-only upload manager for images/assets you want to reuse across Blueprint a
 **Advanced formats** (require Imagick): AVIF, ICO, TIFF, HEIF/HEIC
 
 To enable advanced format support on Pterodactyl servers (PHP 8.3):
+
 ```bash
 apt install -y php8.3-imagick
 systemctl restart php8.3-fpm
@@ -47,7 +48,7 @@ Uninstall (as shown in the admin view):
 - `routes/web.php`: Backend endpoints for uploading/listing/deleting files.
 - `admin/Controller.php`: Admin-only upload and file management endpoints.
 - `admin/view.blade.php`: Admin UI for managing uploads.
-- `public/uploads/`: Bundled starter assets (optional).
+- `public/uploads/`: Bundled starter assets copied into the public Blueprint filesystem during installation.
 
 ## Contributing
 

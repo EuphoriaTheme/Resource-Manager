@@ -6,7 +6,7 @@ namespace Pterodactyl\Http\Controllers\Admin\Extensions\resourcemanager;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\Factory as ViewFactory;
 use Illuminate\View\View;
@@ -16,7 +16,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class resourcemanagerExtensionController extends Controller
 {
-    private const UPLOADS_RELATIVE_PATH = 'extensions/resourcemanager/uploads';
+    private const FILESYSTEM = '{fs}';
+    private const UPLOADS_DIRECTORY = 'uploads';
     private const MAX_UPLOAD_KB = 20480;
 
     /**
@@ -143,9 +144,6 @@ class resourcemanagerExtensionController extends Controller
             return response()->json(['success' => false, 'message' => 'No file uploaded.'], 400);
         }
 
-        $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
-        File::ensureDirectoryExists($uploadsDir, 0755, true);
-
         $ext = strtolower($file->extension() ?: '');
         if ($ext === '' || !in_array($ext, $allowedExtensions, true)) {
             return response()->json(['success' => false, 'message' => 'File type not allowed. Your server only supports: ' . implode(', ', $allowedExtensions)], 422);
@@ -167,15 +165,18 @@ class resourcemanagerExtensionController extends Controller
             return response()->json(['success' => false, 'message' => 'File sanitization failed.'], 422);
         }
 
-        $targetPath = $uploadsDir . DIRECTORY_SEPARATOR . $filename;
-        File::put($targetPath, $sanitized);
+        $disk = Storage::disk(self::FILESYSTEM);
+        $path = self::UPLOADS_DIRECTORY . '/' . $filename;
+        if (!$disk->put($path, $sanitized)) {
+            return response()->json(['success' => false, 'message' => 'Could not save the uploaded file.'], 500);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Image uploaded successfully.',
             'file' => [
                 'name' => $filename,
-                'url' => asset(self::UPLOADS_RELATIVE_PATH . '/' . $filename),
+                'url' => $this->publicFileUrl($path),
             ],
         ]);
     }
@@ -201,32 +202,35 @@ class resourcemanagerExtensionController extends Controller
             $dom = new \DOMDocument();
 
             try {
+                // SVGs do not need DTDs; reject them to avoid entity declarations.
+                if (preg_match('/<!DOCTYPE/i', $contents)) {
+                    throw new \RuntimeException('SVG DTDs are not allowed.');
+                }
+
                 // Disable network access when parsing.
                 if (!@$dom->loadXML($contents, LIBXML_NONET)) {
                     throw new \RuntimeException('Invalid SVG provided.');
                 }
 
-                // Remove dangerous elements entirely.
-                $dangerTags = ['script', 'foreignObject', 'iframe', 'object', 'embed', 'link', 'meta', 'base'];
-                foreach ($dangerTags as $tag) {
-                    $rem = [];
-                    foreach ($dom->getElementsByTagName($tag) as $n) {
-                        $rem[] = $n;
-                    }
-                    foreach ($rem as $n) {
-                        if ($n->parentNode) {
-                            $n->parentNode->removeChild($n);
-                        }
-                    }
-                }
-
-                // Sanitize attributes on all elements.
+                // Remove active-content and external-reference elements entirely.
+                // Compare case-insensitively because XML element names preserve input case.
+                $dangerTags = [
+                    'script', 'style', 'foreignobject', 'iframe', 'object', 'embed',
+                    'link', 'meta', 'base',
+                ];
                 $all = [];
                 foreach ($dom->getElementsByTagName('*') as $node) {
                     $all[] = $node;
                 }
 
                 foreach ($all as $node) {
+                    if (in_array(strtolower($node->localName ?: $node->nodeName), $dangerTags, true)) {
+                        if ($node->parentNode) {
+                            $node->parentNode->removeChild($node);
+                        }
+                        continue;
+                    }
+
                     if (!$node->hasAttributes()) {
                         continue;
                     }
@@ -245,25 +249,51 @@ class resourcemanagerExtensionController extends Controller
                             continue;
                         }
 
-                        if (in_array($lname, ['href', 'xlink:href', 'src'], true) && preg_match('/^\s*javascript:/i', $value)) {
-                            $node->removeAttribute($name);
+                        if (in_array($lname, ['href', 'xlink:href', 'src'], true)) {
+                            // Keep only references to content inside this SVG.
+                            // External, data, and javascript URLs are not needed here.
+                            if (!preg_match('/^\s*#[A-Za-z0-9_.:-]+\s*$/', $value)) {
+                                $node->removeAttribute($name);
+                            }
                             continue;
                         }
 
-                        if ($lname === 'style' && $value !== '') {
+                        if ($lname === 'style') {
+                            // Keep inline styling, but remove URL references and
+                            // browser-specific executable CSS expressions.
                             $clean = preg_replace([
                                 '/url\s*\(\s*[^)]+?\)/i',
+                                '/@import\b[^;]*;?/i',
                                 '/javascript\s*:/i',
                                 '/expression\s*\(/i',
                                 '/behavior\s*\(/i',
+                                '/-moz-binding\s*:/i',
                             ], '', $value);
 
-                            $clean = trim($clean);
+                            // CSS escapes can disguise blocked keywords, so do
+                            // not retain styles that contain escape sequences.
+                            if (str_contains($clean, '\\')) {
+                                $clean = '';
+                            } else {
+                                $clean = trim($clean);
+                            }
                             if ($clean === '') {
                                 $node->removeAttribute($name);
                             } else {
                                 $node->setAttribute($name, $clean);
                             }
+                            continue;
+                        }
+
+                        // Animations are allowed for visual properties, but may
+                        // not dynamically change links or other URL-bearing data.
+                        if ($lname === 'attributename' && preg_match('/^(?:xlink:)?(?:href|style)$/i', trim($value))) {
+                            $node->removeAttribute($name);
+                            continue;
+                        }
+
+                        if (in_array($lname, ['from', 'to', 'values'], true) && preg_match('/(?:javascript\s*:|url\s*\()/i', $value)) {
+                            $node->removeAttribute($name);
                             continue;
                         }
                     }
@@ -398,19 +428,20 @@ class resourcemanagerExtensionController extends Controller
         // even if Imagick is removed/disabled after upload
         $allowedExtensions = $this->getAllExtensionsForListing();
 
-        $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
-        if (!File::exists($uploadsDir)) {
+        $disk = Storage::disk(self::FILESYSTEM);
+        $files = $disk->files(self::UPLOADS_DIRECTORY);
+        if ($files === []) {
             return response()->json(['success' => true, 'files' => []]);
         }
 
-        $files = collect(File::files($uploadsDir))
-            ->filter(fn($file) => in_array(strtolower($file->getExtension()), $allowedExtensions, true))
-            ->sortByDesc(fn($file) => $file->getMTime())
-            ->map(fn($file) => [
-                'name' => $file->getFilename(),
-                'url' => asset(self::UPLOADS_RELATIVE_PATH . '/' . $file->getFilename()),
-                'size' => $file->getSize(),
-                'last_modified' => $file->getMTime(),
+        $files = collect($files)
+            ->filter(fn(string $path) => in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), $allowedExtensions, true))
+            ->sortByDesc(fn(string $path) => $disk->lastModified($path))
+            ->map(fn(string $path) => [
+                'name' => basename($path),
+                'url' => $this->publicFileUrl($path),
+                'size' => $disk->size($path),
+                'last_modified' => $disk->lastModified($path),
             ])
             ->values()
             ->all();
@@ -426,22 +457,15 @@ class resourcemanagerExtensionController extends Controller
             'filename' => ['required', 'string', 'max:255'],
         ]);
 
-        $uploadsDir = public_path(self::UPLOADS_RELATIVE_PATH);
-        $uploadsDirReal = realpath($uploadsDir);
-        if ($uploadsDirReal === false) {
-            return response()->json(['success' => false, 'message' => 'Uploads directory not found.'], 404);
-        }
-
         $filename = basename((string) $request->input('filename'));
-        $filePath = $uploadsDirReal . DIRECTORY_SEPARATOR . $filename;
-        $fileReal = realpath($filePath);
+        $path = self::UPLOADS_DIRECTORY . '/' . $filename;
+        $disk = Storage::disk(self::FILESYSTEM);
 
-        // Prevent path traversal / deleting outside uploads.
-        if ($fileReal === false || strpos($fileReal, $uploadsDirReal) !== 0) {
+        if ($filename === '' || !$disk->exists($path)) {
             return response()->json(['success' => false, 'message' => 'File not found or invalid.'], 404);
         }
 
-        File::delete($fileReal);
+        $disk->delete($path);
 
         return response()->json(['success' => true, 'message' => 'Image deleted successfully.']);
     }
@@ -451,5 +475,10 @@ class resourcemanagerExtensionController extends Controller
         if (!$request->user() || !$request->user()->root_admin) {
             throw new AccessDeniedHttpException();
         }
+    }
+
+    private function publicFileUrl(string $path): string
+    {
+        return rtrim('{webroot/fs}', '/') . '/' . ltrim($path, '/');
     }
 }

@@ -12,7 +12,7 @@
                     Uninstall using: <code>blueprint -remove {identifier}</code><br>
                     Get support via <a href="https://discord.gg/Cus2zP4pPH" target="_blank"
                         rel="noopener noreferrer">Discord</a><br>
-                    Files are served publicly from: <code>/extensions/{identifier}/uploads/</code>
+                    Files are served publicly from: <code>/fs/{identifier}/uploads/</code>
                 </div>
             </div>
         </div>
@@ -34,7 +34,7 @@
                         </div>
                         <button id="rm-upload-btn" type="submit" class="btn btn-primary">Upload</button>
                         <span id="rm-upload-hint" class="text-muted" style="margin-left: 10px;">Max 20MB. Supported:
-                            SVG, JPG, PNG, WebP, GIF, BMP. Additional formats (AVIF, ICO, TIFF, HEIF/HEIC) require Imagick (install with: <code>apt install -y php8.3-imagick</code>).</span>
+                            SVG, JPG, PNG, WebP, GIF, BMP, AVIF, ICO, TIFF, HEIF/HEIC.</span>
                     </form>
 
                     <hr>

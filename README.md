@@ -5,7 +5,7 @@ Admin-only upload manager for images/assets you want to reuse across Blueprint a
 ## What This Addon Does
 
 - Adds an admin extension page for uploading, listing, copying links, and deleting images.
-- Stores files under `/fs/resourcemanager/uploads/` so other addons can reference them by URL.
+- Stores files under `/fs/resourcemanager/` so other addons can reference them by URL.
 - Ships with a starter set of images in `public/uploads/` (optional convenience assets).
 
 ## Security Notes
@@ -48,7 +48,7 @@ Uninstall (as shown in the admin view):
 - `routes/web.php`: Backend endpoints for uploading/listing/deleting files.
 - `admin/Controller.php`: Admin-only upload and file management endpoints.
 - `admin/view.blade.php`: Admin UI for managing uploads.
-- `public/uploads/`: Bundled starter assets copied into the writable Blueprint filesystem during installation.
+- `public/uploads/`: Bundled starter assets copied into the root of the writable Blueprint filesystem during installation.
 - `private/install.sh`: Blueprint installation hook that copies bundled starter assets to that filesystem.
 
 ## Contributing

@@ -12,7 +12,7 @@
                     Uninstall using: <code>blueprint -remove {identifier}</code><br>
                     Get support via <a href="https://discord.gg/Cus2zP4pPH" target="_blank"
                         rel="noopener noreferrer">Discord</a><br>
-                    Files are served publicly from: <code>/fs/{identifier}/uploads/</code>
+                    Files are served publicly from: <code>/fs/{identifier}/</code>
                 </div>
             </div>
         </div>

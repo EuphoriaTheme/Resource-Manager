@@ -24,7 +24,6 @@ class resourcemanagerExtensionController extends Controller
      * the disk name. Blueprint exposes this directory through {webroot/fs}.
      */
     private const FILESYSTEM_DIRECTORY = '{root}/storage/extensions/{identifier}';
-    private const UPLOADS_DIRECTORY = 'uploads';
     private const MAX_UPLOAD_KB = 20480;
 
     /**
@@ -172,10 +171,7 @@ class resourcemanagerExtensionController extends Controller
             return response()->json(['success' => false, 'message' => 'File sanitization failed.'], 422);
         }
 
-        $path = self::UPLOADS_DIRECTORY . '/' . $filename;
-        $directory = $this->uploadsDirectoryPath();
-        File::ensureDirectoryExists($directory);
-        if (File::put($this->filesystemPath($path), $sanitized) === false) {
+        if (File::put($this->filesystemPath($filename), $sanitized) === false) {
             return response()->json(['success' => false, 'message' => 'Could not save the uploaded file.'], 500);
         }
 
@@ -184,7 +180,7 @@ class resourcemanagerExtensionController extends Controller
             'message' => 'Image uploaded successfully.',
             'file' => [
                 'name' => $filename,
-                'url' => $this->publicFileUrl($path),
+                'url' => $this->publicFileUrl($filename),
             ],
         ]);
     }
@@ -436,17 +432,16 @@ class resourcemanagerExtensionController extends Controller
         // even if Imagick is removed/disabled after upload
         $allowedExtensions = $this->getAllExtensionsForListing();
 
-        $directory = $this->uploadsDirectoryPath();
-        if (!File::isDirectory($directory)) {
+        if (!File::isDirectory(self::FILESYSTEM_DIRECTORY)) {
             return response()->json(['success' => true, 'files' => []]);
         }
 
-        $files = collect(File::files($directory))
+        $files = collect(File::files(self::FILESYSTEM_DIRECTORY))
             ->filter(fn(\SplFileInfo $file) => in_array(strtolower($file->getExtension()), $allowedExtensions, true))
             ->sortByDesc(fn(\SplFileInfo $file) => $file->getMTime())
             ->map(fn(\SplFileInfo $file) => [
                 'name' => $file->getFilename(),
-                'url' => $this->publicFileUrl(self::UPLOADS_DIRECTORY . '/' . $file->getFilename()),
+                'url' => $this->publicFileUrl($file->getFilename()),
                 'size' => $file->getSize(),
                 'last_modified' => $file->getMTime(),
             ])
@@ -465,8 +460,7 @@ class resourcemanagerExtensionController extends Controller
         ]);
 
         $filename = basename((string) $request->input('filename'));
-        $path = self::UPLOADS_DIRECTORY . '/' . $filename;
-        $absolutePath = $this->filesystemPath($path);
+        $absolutePath = $this->filesystemPath($filename);
 
         if ($filename === '' || !File::isFile($absolutePath)) {
             return response()->json(['success' => false, 'message' => 'File not found or invalid.'], 404);
@@ -489,11 +483,6 @@ class resourcemanagerExtensionController extends Controller
     private function publicFileUrl(string $path): string
     {
         return rtrim('{webroot/fs}', '/') . '/' . ltrim($path, '/');
-    }
-
-    private function uploadsDirectoryPath(): string
-    {
-        return $this->filesystemPath(self::UPLOADS_DIRECTORY);
     }
 
     private function filesystemPath(string $path): string

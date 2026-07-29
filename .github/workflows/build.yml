@@ -1,0 +1,46 @@
+name: Build Blueprint Artifact
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Extract version from conf.yml
+        id: get_version
+        run: |
+          VERSION=$(sed -n 's/^[[:space:]]*version:[[:space:]]*//p' conf.yml | head -n 1)
+          VERSION=${VERSION//\"/}
+          VERSION=${VERSION//\'/}
+          echo "Detected version: $VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate unique hash
+        id: generate_hash
+        run: |
+          HASH=$(git rev-parse --short HEAD)
+          echo "Generated hash: $HASH"
+          echo "HASH=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Blueprint Build
+        id: blueprint_build
+        uses: blueprint-community/action-export@v1.0.0
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: blueprint-build-${{ steps.get_version.outputs.VERSION }}-${{ steps.generate_hash.outputs.HASH }}
+          path: ${{ steps.blueprint_build.outputs.FILE }}

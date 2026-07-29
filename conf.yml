@@ -21,7 +21,7 @@ dashboard:
   components: ""
 
 data:
-  directory: ""
+  directory: "private"
   public: "public"
   console: ""
 

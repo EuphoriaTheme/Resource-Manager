@@ -6,7 +6,7 @@ namespace Pterodactyl\Http\Controllers\Admin\Extensions\resourcemanager;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\View\Factory as ViewFactory;
 use Illuminate\View\View;
@@ -16,7 +16,15 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class resourcemanagerExtensionController extends Controller
 {
-    private const FILESYSTEM = '{fs}';
+    /**
+     * Blueprint's public extension filesystem, resolved during installation.
+     *
+     * Do not use Storage::disk('{fs}') here. Some Blueprint versions register
+     * the extension disk incorrectly, causing Laravel to receive an array as
+     * the disk name. The physical filesystem path is reliable and is still
+     * managed and exposed by Blueprint at {webroot/fs}.
+     */
+    private const FILESYSTEM_DIRECTORY = '{root/fs}';
     private const UPLOADS_DIRECTORY = 'uploads';
     private const MAX_UPLOAD_KB = 20480;
 
@@ -165,9 +173,10 @@ class resourcemanagerExtensionController extends Controller
             return response()->json(['success' => false, 'message' => 'File sanitization failed.'], 422);
         }
 
-        $disk = Storage::disk(self::FILESYSTEM);
         $path = self::UPLOADS_DIRECTORY . '/' . $filename;
-        if (!$disk->put($path, $sanitized)) {
+        $directory = $this->uploadsDirectoryPath();
+        File::ensureDirectoryExists($directory);
+        if (File::put($this->filesystemPath($path), $sanitized) === false) {
             return response()->json(['success' => false, 'message' => 'Could not save the uploaded file.'], 500);
         }
 
@@ -428,20 +437,19 @@ class resourcemanagerExtensionController extends Controller
         // even if Imagick is removed/disabled after upload
         $allowedExtensions = $this->getAllExtensionsForListing();
 
-        $disk = Storage::disk(self::FILESYSTEM);
-        $files = $disk->files(self::UPLOADS_DIRECTORY);
-        if ($files === []) {
+        $directory = $this->uploadsDirectoryPath();
+        if (!File::isDirectory($directory)) {
             return response()->json(['success' => true, 'files' => []]);
         }
 
-        $files = collect($files)
-            ->filter(fn(string $path) => in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), $allowedExtensions, true))
-            ->sortByDesc(fn(string $path) => $disk->lastModified($path))
-            ->map(fn(string $path) => [
-                'name' => basename($path),
-                'url' => $this->publicFileUrl($path),
-                'size' => $disk->size($path),
-                'last_modified' => $disk->lastModified($path),
+        $files = collect(File::files($directory))
+            ->filter(fn(\SplFileInfo $file) => in_array(strtolower($file->getExtension()), $allowedExtensions, true))
+            ->sortByDesc(fn(\SplFileInfo $file) => $file->getMTime())
+            ->map(fn(\SplFileInfo $file) => [
+                'name' => $file->getFilename(),
+                'url' => $this->publicFileUrl(self::UPLOADS_DIRECTORY . '/' . $file->getFilename()),
+                'size' => $file->getSize(),
+                'last_modified' => $file->getMTime(),
             ])
             ->values()
             ->all();
@@ -459,13 +467,15 @@ class resourcemanagerExtensionController extends Controller
 
         $filename = basename((string) $request->input('filename'));
         $path = self::UPLOADS_DIRECTORY . '/' . $filename;
-        $disk = Storage::disk(self::FILESYSTEM);
+        $absolutePath = $this->filesystemPath($path);
 
-        if ($filename === '' || !$disk->exists($path)) {
+        if ($filename === '' || !File::isFile($absolutePath)) {
             return response()->json(['success' => false, 'message' => 'File not found or invalid.'], 404);
         }
 
-        $disk->delete($path);
+        if (!File::delete($absolutePath)) {
+            return response()->json(['success' => false, 'message' => 'Could not delete the file.'], 500);
+        }
 
         return response()->json(['success' => true, 'message' => 'Image deleted successfully.']);
     }
@@ -480,5 +490,15 @@ class resourcemanagerExtensionController extends Controller
     private function publicFileUrl(string $path): string
     {
         return rtrim('{webroot/fs}', '/') . '/' . ltrim($path, '/');
+    }
+
+    private function uploadsDirectoryPath(): string
+    {
+        return $this->filesystemPath(self::UPLOADS_DIRECTORY);
+    }
+
+    private function filesystemPath(string $path): string
+    {
+        return rtrim(self::FILESYSTEM_DIRECTORY, '/\\') . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
     }
 }

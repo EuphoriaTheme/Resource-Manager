@@ -485,7 +485,7 @@ class resourcemanagerExtensionController extends Controller
 
     private function publicFileUrl(string $path): string
     {
-        return rtrim('{webroot/fs}', '/') . '/' . ltrim($path, '/');
+        return rtrim('{webroot}', '/') . '/fs/{identifier}/' . ltrim($path, '/');
     }
 
     /**

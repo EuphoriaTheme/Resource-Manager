@@ -17,14 +17,13 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 class resourcemanagerExtensionController extends Controller
 {
     /**
-     * Blueprint's public extension filesystem, resolved during installation.
+     * Blueprint's writable, publicly linked extension filesystem.
      *
      * Do not use Storage::disk('{fs}') here. Some Blueprint versions register
      * the extension disk incorrectly, causing Laravel to receive an array as
-     * the disk name. The physical filesystem path is reliable and is still
-     * managed and exposed by Blueprint at {webroot/fs}.
+     * the disk name. Blueprint exposes this directory through {webroot/fs}.
      */
-    private const FILESYSTEM_DIRECTORY = '{root/fs}';
+    private const FILESYSTEM_DIRECTORY = '{root}/storage/extensions/{identifier}';
     private const UPLOADS_DIRECTORY = 'uploads';
     private const MAX_UPLOAD_KB = 20480;
 

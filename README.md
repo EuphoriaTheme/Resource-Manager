@@ -5,7 +5,7 @@ Admin-only upload manager for images/assets you want to reuse across Blueprint a
 ## What This Addon Does
 
 - Adds an admin extension page for uploading, listing, copying links, and deleting images.
-- Stores files under `/fs/extensions/resourcemanager/uploads/` so other addons can reference them by URL.
+- Stores files under `/fs/resourcemanager/uploads/` so other addons can reference them by URL.
 - Ships with a starter set of images in `public/uploads/` (optional convenience assets).
 
 ## Security Notes

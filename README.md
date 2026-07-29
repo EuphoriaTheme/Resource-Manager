@@ -48,8 +48,7 @@ Uninstall (as shown in the admin view):
 - `routes/web.php`: Backend endpoints for uploading/listing/deleting files.
 - `admin/Controller.php`: Admin-only upload and file management endpoints.
 - `admin/view.blade.php`: Admin UI for managing uploads.
-- `public/uploads/`: Bundled starter assets copied into the root of the writable Blueprint filesystem during installation.
-- `private/install.sh`: Blueprint installation hook that copies bundled starter assets to that filesystem.
+- `public/uploads/`: Bundled starter assets copied into the writable Blueprint filesystem on the first admin request.
 
 ## Contributing
 

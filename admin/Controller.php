@@ -24,6 +24,7 @@ class resourcemanagerExtensionController extends Controller
      * the disk name. Blueprint exposes this directory through {webroot/fs}.
      */
     private const FILESYSTEM_DIRECTORY = '{root}/storage/extensions/{identifier}';
+    private const BUNDLED_ASSETS_DIRECTORY = '{root/public}/uploads';
     private const MAX_UPLOAD_KB = 20480;
 
     /**
@@ -132,6 +133,7 @@ class resourcemanagerExtensionController extends Controller
     public function uploadImage(Request $request): JsonResponse
     {
         $this->assertRootAdmin($request);
+        $this->seedBundledAssets();
 
         $allowedExtensions = $this->getAllowedExtensions();
 
@@ -427,6 +429,7 @@ class resourcemanagerExtensionController extends Controller
     public function listImages(Request $request): JsonResponse
     {
         $this->assertRootAdmin($request);
+        $this->seedBundledAssets();
 
         // Use static allowlist for listing so previously-uploaded files remain visible
         // even if Imagick is removed/disabled after upload
@@ -483,6 +486,25 @@ class resourcemanagerExtensionController extends Controller
     private function publicFileUrl(string $path): string
     {
         return rtrim('{webroot/fs}', '/') . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * Seed the writable extension filesystem after Blueprint has completed
+     * installation and assigned ownership to the webserver user. This avoids
+     * a custom install script, which runs before that ownership change.
+     */
+    private function seedBundledAssets(): void
+    {
+        if (!File::isDirectory(self::BUNDLED_ASSETS_DIRECTORY) || !File::isDirectory(self::FILESYSTEM_DIRECTORY)) {
+            return;
+        }
+
+        foreach (File::files(self::BUNDLED_ASSETS_DIRECTORY) as $asset) {
+            $destination = $this->filesystemPath($asset->getFilename());
+            if (!File::exists($destination)) {
+                File::copy($asset->getPathname(), $destination);
+            }
+        }
     }
 
     private function filesystemPath(string $path): string

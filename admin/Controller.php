@@ -141,7 +141,7 @@ class resourcemanagerExtensionController extends Controller
             'image' => [
                 'required',
                 'file',
-                'image',
+                'image:allow_svg',
                 'mimes:' . implode(',', $allowedExtensions),
                 'max:' . self::MAX_UPLOAD_KB,
             ],

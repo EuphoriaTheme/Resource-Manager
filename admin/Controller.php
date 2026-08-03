@@ -157,14 +157,10 @@ class resourcemanagerExtensionController extends Controller
             return response()->json(['success' => false, 'message' => 'File type not allowed. Your server only supports: ' . implode(', ', $allowedExtensions)], 422);
         }
 
-        // Use a readable slug + random suffix to avoid collisions and avoid unsafe filenames.
+        // Preserve a readable version of the original filename. Duplicate names receive
+        // a numeric suffix (e.g. image.png, image-1.png) instead of a random token.
         $base = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $base = Str::slug($base);
-        if ($base === '') {
-            $base = 'image';
-        }
-
-        $filename = sprintf('%s_%s.%s', $base, Str::random(8), $ext);
+        $filename = $this->availableFilename($base, $ext);
 
         // Sanitize uploads for all supported formats before writing.
         try {
@@ -476,6 +472,47 @@ class resourcemanagerExtensionController extends Controller
         return response()->json(['success' => true, 'message' => 'Image deleted successfully.']);
     }
 
+    public function renameImage(Request $request): JsonResponse
+    {
+        $this->assertRootAdmin($request);
+
+        $request->validate([
+            'filename' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $filename = basename((string) $request->input('filename'));
+        $source = $this->filesystemPath($filename);
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        if (
+            $filename === ''
+            || !in_array($extension, $this->getAllExtensionsForListing(), true)
+            || !File::isFile($source)
+        ) {
+            return response()->json(['success' => false, 'message' => 'File not found or invalid.'], 404);
+        }
+
+        $newFilename = $this->availableFilename((string) $request->input('name'), $extension, $filename);
+        if ($newFilename === $filename) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Filename is unchanged.',
+                'file' => ['name' => $filename, 'url' => $this->publicFileUrl($filename)],
+            ]);
+        }
+
+        if (!File::move($source, $this->filesystemPath($newFilename))) {
+            return response()->json(['success' => false, 'message' => 'Could not rename the file.'], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image renamed successfully.',
+            'file' => ['name' => $newFilename, 'url' => $this->publicFileUrl($newFilename)],
+        ]);
+    }
+
     private function assertRootAdmin(Request $request): void
     {
         if (!$request->user() || !$request->user()->root_admin) {
@@ -510,5 +547,24 @@ class resourcemanagerExtensionController extends Controller
     private function filesystemPath(string $path): string
     {
         return rtrim(self::FILESYSTEM_DIRECTORY, '/\\') . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
+    }
+
+    private function availableFilename(string $requestedName, string $extension, ?string $currentFilename = null): string
+    {
+        // Ignore a supplied extension because the existing/uploaded file type must stay unchanged.
+        $base = Str::slug(pathinfo($requestedName, PATHINFO_FILENAME));
+        if ($base === '') {
+            $base = 'image';
+        }
+
+        $counter = 0;
+        do {
+            $suffix = $counter === 0 ? '' : '-' . $counter;
+            $maxBaseLength = 255 - strlen($extension) - 1 - strlen($suffix);
+            $filename = substr($base, 0, max(1, $maxBaseLength)) . $suffix . '.' . $extension;
+            $counter++;
+        } while ($filename !== $currentFilename && File::exists($this->filesystemPath($filename)));
+
+        return $filename;
     }
 }

@@ -24,3 +24,6 @@ Route::get('/admin/resourcemanager/uploads/list', [{identifier}ExtensionControll
 
 Route::delete('/admin/resourcemanager/uploads/delete', [{identifier}ExtensionController::class, 'deleteImage'])
     ->name('blueprint.extensions.resourcemanager.deleteImage');
+
+Route::patch('/admin/resourcemanager/uploads/rename', [{identifier}ExtensionController::class, 'renameImage'])
+    ->name('blueprint.extensions.resourcemanager.renameImage');

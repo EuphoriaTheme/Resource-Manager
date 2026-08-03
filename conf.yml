@@ -3,7 +3,7 @@ info:
   identifier: "resourcemanager"
   description: "A resource manager for managing resources in Pterodactyl Panel."
   flags: ""
-  version: "1.4.1"
+  version: "1.5"
   target: "beta-2026-06"
   author: "Euphoria Development"
   icon: "logo.png"

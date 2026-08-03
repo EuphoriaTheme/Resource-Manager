@@ -209,6 +209,7 @@
         const listUrl = '{{ route("blueprint.extensions.resourcemanager.listImages") }}';
         const uploadUrl = '{{ route("blueprint.extensions.resourcemanager.uploadImage") }}';
         const deleteUrl = '{{ route("blueprint.extensions.resourcemanager.deleteImage") }}';
+        const renameUrl = '{{ route("blueprint.extensions.resourcemanager.renameImage") }}';
         const csrfToken = '{{ csrf_token() }}';
 
         let allFiles = [];
@@ -327,6 +328,48 @@
                     }
                 });
 
+                const renameBtn = document.createElement('button');
+                renameBtn.type = 'button';
+                renameBtn.className = 'btn btn-warning btn-sm';
+                renameBtn.textContent = 'Rename';
+                renameBtn.addEventListener('click', async () => {
+                    const extensionIndex = file.name.lastIndexOf('.');
+                    const currentBase = extensionIndex > 0 ? file.name.slice(0, extensionIndex) : file.name;
+                    const requestedName = window.prompt('New filename (the extension is kept):', currentBase);
+
+                    if (requestedName === null) return;
+                    if (!requestedName.trim()) {
+                        showToast('Enter a filename.', 'error');
+                        return;
+                    }
+
+                    renameBtn.disabled = true;
+                    try {
+                        const resp = await fetch(renameUrl, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: JSON.stringify({ filename: file.name, name: requestedName }),
+                        });
+
+                        const data = await resp.json().catch(() => ({}));
+                        if (!resp.ok || !data.success) {
+                            throw new Error(data.message || `Rename failed (HTTP ${resp.status}).`);
+                        }
+
+                        showToast(data.message || 'Image renamed successfully.', 'success');
+                        await fetchImages();
+                    } catch (e) {
+                        console.error(e);
+                        showToast(e?.message || 'Failed to rename image.', 'error');
+                    } finally {
+                        renameBtn.disabled = false;
+                    }
+                });
+
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
                 delBtn.className = 'btn btn-danger btn-sm';
@@ -335,6 +378,7 @@
 
                 actions.appendChild(openBtn);
                 actions.appendChild(copyBtn);
+                actions.appendChild(renameBtn);
                 actions.appendChild(delBtn);
 
                 li.appendChild(img);
